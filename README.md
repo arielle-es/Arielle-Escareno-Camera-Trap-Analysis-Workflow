@@ -2,7 +2,7 @@
 
 **By Arielle**
 
-## Why Is SpongeBob SquarePants The Worst Cartoon Ever?
+## Why Is SpongeBob SquarePants The Greatest Cartoon Ever?
 
 SpongeBob SquarePants was released in the 90s and was created by Stephen Hillenberg and Nickelodeon has continued to release new seasons.  
 
