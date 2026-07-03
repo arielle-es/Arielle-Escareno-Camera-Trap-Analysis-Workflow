@@ -3,7 +3,7 @@
 **By Arielle**
 
 
-## Why Is SpongeBob SquarePants The Greatest Cartoon Ever?
+## Why Spongebob Squarepants Has The Best Soundtrack
 
 
 SpongeBob SquarePants was released in the 90s and was created by Stephen Hillenberg and Nickelodeon has continued to release new seasons.  
