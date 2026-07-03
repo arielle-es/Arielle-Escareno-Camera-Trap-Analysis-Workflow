@@ -3,7 +3,7 @@
 **By Arielle**
 
 
-## Why Spongebob Squarepants Has The Best Soundtrack
+## How Spongebob SquarePants Raised An Entire Generation
 
 
 SpongeBob SquarePants was released in the 90s and was created by Stephen Hillenberg and Nickelodeon has continued to release new seasons.  
