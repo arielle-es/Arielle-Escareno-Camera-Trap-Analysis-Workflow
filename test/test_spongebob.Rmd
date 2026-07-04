@@ -1,0 +1,17 @@
+---
+format: 
+  html:
+    self-contained: true
+    toc: true
+  pdf: default
+---
+
+## How Spongebob Raised An Entire Generation
+By Arielle Escareno
+
+
+```{r}
+
+1+1
+
+```
