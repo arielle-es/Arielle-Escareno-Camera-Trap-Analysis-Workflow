@@ -1,0 +1,416 @@
+---
+title: "Tortoise and Iguana Spatial and Temporal Overlap"
+title-block-banner: true
+format:
+  html:
+    self-contained: true
+    toc: true
+    theme: yeti
+  pdf: default
+output:
+  rmarkdown::html_document:
+    theme: yeti
+  pagedown::pdf_document: default
+editor: visual
+author:
+  - "Charles Lehnen"
+lan: en
+---
+
+This tests three hypotheses about whether tortoises and iguanas avoid each other:
+
+1.  They are **not in the same image** (direct co-occurrence)
+2.  They use the same camera at **different times of day** (temporal avoidance)
+3.  They are in **different locations** (spatial avoidance)
+
+Site and time of day both come out of the image EXIF, so neither needs to be entered by hand during labelling.
+
+> **On the plot titles:** following the "a good title states the finding" convention, the titles below are written as the *expected* finding. They are placeholders. Once enough images are labelled, read each plot and rewrite its title to say what the data actually shows -- including when that's "no difference". Right now they assert conclusions the data has not established.
+
+Setting up the environment
+
+```{r}
+rm(list = ls()) # clearing the environment so past code doesn't interfere
+library(readr) # setting up the libraries/packages
+library(dplyr)
+library(ggplot2)
+library(janitor)
+library(stringr)
+library(lubridate)
+library(ggalluvial) # for the alluvial (flow) plot
+library(webr) # for the PieDonut (stacked donut) plot
+
+# Everything this analysis writes out goes here. ggsave/png won't create the
+# folder on their own, so make it once up front (harmless if it already exists).
+dir.create("../output/r_analysis", showWarnings = FALSE, recursive = TRUE)
+```
+
+Loading in our data
+
+```{r}
+# classifications.csv = what we labelled by hand (species, behavior, etc.)
+# metadata.csv = what the detector wrote out (one row per crop, plus EXIF)
+dfclassifications <- read.csv(file = "../output/classifications.csv")
+dfmetadata <- read.csv(file = "../output/metadata/metadata.csv")
+```
+
+explore my data
+
+```{r}
+summary(dfclassifications)
+dim(dfclassifications)
+dim(dfmetadata)
+```
+
+Cleaning our data
+
+```{r}
+dfclassifications_clean <- dfclassifications %>%
+  clean_names() %>%
+  # parameters/fields.csv carries a byte-order mark, and it rides along into the
+  # Species header (the column is literally named "<BOM>Species"). Depending on
+  # how R decodes the file that comes back as species / i_species /
+  # x_u_feff_species, so normalise whatever it became back to `species` -- if
+  # this is wrong, the SKIPPED filter below silently stops matching.
+  rename_with(~ "species", ends_with("species")) %>%
+  # The classifier writes "SKIPPED" in every field when you hit Esc / Skip.
+  filter(species != "SKIPPED") %>%
+  filter(species != "") %>%
+  # If a crop was labelled out of the buffered folder it carries a _buf100
+  # style suffix that the metadata doesn't have -- drop it so the two match.
+  mutate(crop_path = str_replace(image, "_buf\\d+(\\.[^.]+)$", "\\1")) %>%
+  mutate(crop_path = str_replace(crop_path, "^\\./", ""))
+
+dfmetadata_clean <- dfmetadata %>%
+  clean_names() %>%
+  # cropped_image looks like "../../output/cropped/SANTA FE 983/.../RCNX0013_crop1.JPG".
+  # Cutting everything up to output/cropped/ leaves the same relative path that
+  # image_classification.py writes into the Image column.
+  mutate(crop_path = str_remove(cropped_image, "^.*output/cropped/")) %>%
+  # Crop file NAMES repeat across cameras (RCNX0079_crop1.JPG shows up 4 times),
+  # so we join on this full relative path and never on the bare filename.
+  mutate(
+    first_seg = str_replace(subfolder, "[/\\\\].*$", ""), # everything before the first / or \
+    cam_id    = str_extract(first_seg, "\\d{3,}"),
+    camera_trap_name = if_else(is.na(cam_id), "000", cam_id)
+  ) %>%
+  # Same EXIF parse as metadata_analysis.Rmd: "YYYY:MM:DD HH:MM:SS"
+  mutate(
+    dt   = parse_date_time(date_time_original, orders = "Y:m:d H:M:S"),
+    date = as_date(dt),
+    hour = hour(dt)
+  ) %>%
+  # Santa Fe sits on the equator, so daylight is roughly 06:00-18:00 all year.
+  mutate(time_of_day = case_when(
+    hour >= 6  & hour < 11 ~ "Morning",
+    hour >= 11 & hour < 15 ~ "Midday",
+    hour >= 15 & hour < 18 ~ "Afternoon",
+    TRUE ~ "Night"
+  )) %>%
+  mutate(time_of_day = factor(time_of_day,
+                              levels = c("Morning", "Midday", "Afternoon", "Night"))) %>%
+  # Keeping just what we use. The full file is ~40 columns wide and includes a
+  # MakerNote blob of raw binary per row, which makes printing it unreadable.
+  select(subfolder, original_image, crop_path, camera_trap_name,
+         dt, date, hour, time_of_day, confidence)
+
+head(dfmetadata_clean)
+summary(dfmetadata_clean)
+```
+
+Joining the labels onto the metadata
+
+```{r}
+# inner_join because a crop is only useful here if we both detected AND labelled it.
+dfjoined <- dfclassifications_clean %>%
+  inner_join(dfmetadata_clean, by = "crop_path")
+
+# Sanity check: if this is 0 (or way below nrow(dfclassifications_clean)) then the
+# paths aren't lining up and every plot below is silently wrong. Worth a look
+# before trusting anything -- the 3 legacy rows labelled under the old flat
+# folder layout are expected to drop out here.
+nrow(dfclassifications_clean)
+nrow(dfjoined)
+
+# Just our two focal species
+dffocal <- dfjoined %>%
+  filter(species %in% c("Tortoise", "Iguana"))
+
+dffocal %>% count(species)
+```
+
+## Hypothesis 1: tortoises and iguanas are not in the same image
+
+```{r}
+# One original photo can produce several crops, so we roll the crops back up to
+# the photo they came from and ask what was in that photo.
+#
+# Note this is built from ALL labelled photos, not just the tortoise/iguana ones.
+# That matters: if we only kept photos containing one of the two, then "neither
+# species present" becomes impossible by construction, and the independence test
+# below would be testing a table with a structurally empty cell. Photos of doves,
+# finches, etc. are what make "neither" a real category.
+dfphoto <- dfjoined %>%
+  group_by(original_image, camera_trap_name, time_of_day, date) %>%
+  summarize(
+    has_tortoise = any(species == "Tortoise"),
+    has_iguana   = any(species == "Iguana"),
+    .groups = "drop"
+  )
+
+# For the plot we do want just the photos with at least one of our two species.
+dfphoto_focal <- dfphoto %>%
+  filter(has_tortoise | has_iguana) %>%
+  mutate(composition = case_when(
+    has_tortoise & has_iguana ~ "Both",
+    has_tortoise ~ "Tortoise only",
+    has_iguana ~ "Iguana only"
+  )) %>%
+  mutate(composition = factor(composition,
+                              levels = c("Tortoise only", "Iguana only", "Both")))
+
+dfphoto_focal %>% count(composition)
+```
+
+```{r}
+dfphoto_focal %>%
+  ggplot(aes(x = composition)) +
+  geom_bar(fill = "#991b1e", alpha = 0.8) +
+  labs(title = "Tortoises and Iguanas Rarely Share a Photo",
+       x = "What was in the photo", y = "Number of photos") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/CoOccurrenceBarPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+The same photo composition as a donut -- one ring, three slices (tortoise only,
+iguana only, both), so how rarely the two share a photo shows up as how thin the
+"Both" slice is.
+
+```{r}
+dfphoto_focal %>%
+  count(composition, name = "frequency") %>%
+  mutate(percentage = round(frequency / sum(frequency) * 100)) %>%
+  ggplot(aes(x = 2, y = frequency, fill = composition)) +
+  geom_col(width = 1, color = "white") +
+  # theta = "y" wraps the single stacked bar into a ring; xlim's lower bound
+  # leaves the centre empty so it reads as a donut, not a filled pie.
+  coord_polar(theta = "y") +
+  xlim(0.5, 2.5) +
+  geom_text(aes(label = paste0(percentage, "%")),
+            position = position_stack(vjust = 0.5)) +
+  labs(title = "Tortoises and Iguanas Rarely Share a Photo",
+       fill = "What was in the photo") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/CoOccurrenceDonutPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+```{r}
+# "Rarely together" only means something against how often they'd land together
+# by chance, so compare observed co-occurrence to independence across all photos.
+cooccur_table <- table(tortoise = dfphoto$has_tortoise, iguana = dfphoto$has_iguana)
+cooccur_table
+
+chisq.test(cooccur_table)
+```
+
+## Hypothesis 2: they use the same camera at different times of day
+
+
+```{r}
+# The raw hour is more honest than the four bins -- the bins are our invention,
+# this is what the cameras actually saw.
+dffocal %>%
+  ggplot(aes(x = hour, fill = species)) +
+  geom_histogram(binwidth = 1, position = "identity", alpha = 0.5) +
+  labs(title = "Hourly Detection Pattern by Species",
+       x = "Hour of day", y = "Number of detections", fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/HourlyActivityPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+```{r}
+dffocal %>%
+  count(camera_trap_name, time_of_day, species) %>%
+  group_by(camera_trap_name, species) %>%
+  # total = all detections of that species at that camera; proportion is the
+  # share falling in each time-of-day bin. The bars are a proportion of N counts,
+  # so the honest error bar is the standard error of a proportion: sqrt(p(1-p)/N).
+  mutate(
+    total      = sum(n),
+    proportion = n / total,
+    se         = sqrt(proportion * (1 - proportion) / total)
+  ) %>%
+  ungroup() %>%
+  ggplot(aes(x = time_of_day, y = proportion, fill = species)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  # pmax keeps the lower whisker from dropping below 0, which a proportion can't be.
+  geom_errorbar(aes(ymin = pmax(proportion - se, 0), ymax = proportion + se),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  labs(title = "Tortoise and Iguana Activity Peaks at Different Times of Day",
+       x = "Time of day", y = "Proportion of that species' detections",
+       fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~camera_trap_name)
+
+ggsave(filename = "../output/r_analysis/TimeOfDayByCameraPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+The same thing as box-and-whisker plots instead of bars. Each point is one
+camera's proportion for that time of day, so the box shows how much that
+time-of-day share varies from camera to camera (there's just the one labelled
+camera right now, so each box is a single point until the rest are labelled).
+
+```{r}
+dffocal %>%
+  count(camera_trap_name, time_of_day, species) %>%
+  group_by(camera_trap_name, species) %>%
+  mutate(proportion = n / sum(n)) %>%
+  ungroup() %>%
+  ggplot(aes(x = time_of_day, y = proportion)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(alpha = 0.3, color = "#991b1e") +
+  labs(title = "Tortoise and Iguana Activity Peaks at Different Times of Day",
+       x = "Time of day", y = "Proportion of that species' detections") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~species)
+
+ggsave(filename = "../output/r_analysis/TimeOfDayBoxPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+
+
+```{r}
+# Is the time-of-day split different between the two species?
+tod_table <- table(species = dffocal$species, time_of_day = dffocal$time_of_day)
+tod_table
+
+chisq.test(tod_table)
+```
+
+## Hypothesis 3: they are in different locations
+
+> **Only one camera shows up here right now.** The detector wrote metadata for
+> five cameras (905, 975, 976, 983, 1001), but `classifications.csv` has only
+> been hand-labelled for **SANTA FE 1001** so far. The inner join keeps a crop
+> only if it was both detected *and* labelled, so the four unlabelled cameras
+> drop out. This is a labelling gap, not a code problem -- the plots below build
+> themselves from whatever cameras are present, so all five appear the moment the
+> rest get labelled.
+
+The species split per camera as a stacked donut. Each camera is one ring; the
+ring is divided by species, so a ring that's all one colour is a camera that only
+saw one of the two.
+
+```{r}
+dffocal %>%
+  count(camera_trap_name, species, name = "frequency") %>%
+  group_by(camera_trap_name) %>%
+  mutate(proportion = frequency / sum(frequency)) %>%
+  ungroup() %>%
+  ggplot(aes(x = camera_trap_name, y = proportion, fill = species)) +
+  geom_col(width = 0.9, color = "white") +
+  # theta = "y" wraps each camera's bar into its own ring.
+  coord_polar(theta = "y") +
+  # camera_trap_name is discrete, so xlim() (a continuous scale) errors here.
+  # Padding the low end of the discrete axis instead pushes the innermost ring
+  # outward, which is what leaves the empty centre that makes it read as a donut.
+  scale_x_discrete(expand = expansion(add = c(1.5, 0.6))) +
+  labs(title = "Species Composition Differs Between Camera Locations",
+       fill = "Species") +
+  theme_void() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/SpeciesByCameraDonutPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+The same information as an alluvial (flow) plot. The left axis is the species
+overall (tortoise vs. iguana), the right axis is the camera, and the width of
+each ribbon is how many detections flowed from that species into that camera --
+so a species that only turns up at one camera is a single fat ribbon.
+
+```{r}
+dffocal %>%
+  count(species, camera_trap_name, name = "frequency") %>%
+  ggplot(aes(y = frequency, axis1 = species, axis2 = camera_trap_name)) +
+  geom_alluvium(aes(fill = species), width = 1/6) +
+  geom_stratum(alpha = 0.5, width = 1/6) +
+  geom_text(stat = "stratum", size = 3, aes(label = after_stat(stratum))) +
+  scale_x_discrete(limits = c("Species", "Camera trap"), expand = c(0.1, 0.1)) +
+  labs(title = "Where Each Species Was Detected",
+       y = "Number of detections", fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/SpeciesByCameraAlluvialPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+The same species-to-camera breakdown as a stacked (nested) donut. The inner ring
+is the species overall, and each inner wedge is broken out by camera in the outer
+ring -- so a species seen at only one camera is a single outer wedge, the donut
+version of the alluvial's one fat ribbon.
+
+```{r}
+dffocal %>%
+  count(species, camera_trap_name, name = "frequency") %>%
+  PieDonut(aes(species, camera_trap_name, count = frequency),
+           title = "Where Each Species Was Detected",
+           r0 = 0.30, r1 = 0.9, color = "black", titlesize = 5)
+
+# PieDonut draws straight to the graphics device rather than returning a plot
+# object, so we can't hand it to ggsave -- record what was just drawn and replay
+# it into a png, the same trick the iguana analysis uses.
+recorded_plot <- recordPlot()
+png(filename = "../output/r_analysis/SpeciesByCameraDonutNestedPlot.png", width = 10, height = 8, units = "in", res = 300)
+replayPlot(recorded_plot)
+dev.off()
+```
+
+```{r}
+# Counts as well as proportions -- a camera with 3 detections and a camera with
+# 3000 look identical once you divide, and that difference matters.
+dffocal %>%
+  ggplot(aes(x = camera_trap_name, fill = species)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Detections per Camera by Species",
+       x = "Camera trap", y = "Number of detections", fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/DetectionsPerCameraPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+```{r}
+# Is species composition independent of camera?
+cam_table <- table(species = dffocal$species, camera = dffocal$camera_trap_name)
+cam_table
+
+chisq.test(cam_table)
+```
+
+Summary table
+
+```{r}
+species_stats <- dffocal %>%
+  group_by(species, camera_trap_name) %>%
+  summarize(
+    detections   = n(),
+    photos       = n_distinct(original_image),
+    days         = n_distinct(date),
+    first_seen   = min(date, na.rm = TRUE),
+    last_seen    = max(date, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(species, camera_trap_name)
+
+write.csv(species_stats, "../output/r_analysis/species_stats.csv", row.names = FALSE)
+
+species_stats
+```
