@@ -1,5 +1,5 @@
 ---
-title: "Tortoise and Iguana Spatial and Temporal Overlap"
+title: "Tortoises and Iguanas"
 title-block-banner: true
 format:
   html:
@@ -17,49 +17,59 @@ author:
 lan: en
 ---
 
-This tests three hypotheses about whether tortoises and iguanas avoid each other:
+```{r}
 
-1.  They are **not in the same image** (direct co-occurrence)
-2.  They use the same camera at **different times of day** (temporal avoidance)
-3.  They are in **different locations** (spatial avoidance)
+rm(list = ls())
 
-Site and time of day both come out of the image EXIF, so neither needs to be entered by hand during labelling.
-
-> **On the plot titles:** following the "a good title states the finding" convention, the titles below are written as the *expected* finding. They are placeholders. Once enough images are labelled, read each plot and rewrite its title to say what the data actually shows -- including when that's "no difference". Right now they assert conclusions the data has not established.
-
-Setting up the environment
+```
 
 ```{r}
-rm(list = ls()) # clearing the environment so past code doesn't interfere
-library(readr) # setting up the libraries/packages
+
+library(readr) 
 library(dplyr)
 library(ggplot2)
 library(janitor)
 library(stringr)
 library(lubridate)
-library(ggalluvial) # for the alluvial (flow) plot
-library(webr) # for the PieDonut (stacked donut) plot
+library(ggalluvial) # for the alluvial plot
+library(webr) # for the stacked donut plot
 
-# Everything this analysis writes out goes here. ggsave/png won't create the
-# folder on their own, so make it once up front (harmless if it already exists).
+
+```
+
+```{r}
+
+# Output folder
 dir.create("../output/r_analysis", showWarnings = FALSE, recursive = TRUE)
+
 ```
 
 Loading in our data
 
 ```{r}
-# classifications.csv = what we labelled by hand (species, behavior, etc.)
-# metadata.csv = what the detector wrote out (one row per crop, plus EXIF)
-dfclassifications <- read.csv(file = "../output/classifications.csv")
-dfmetadata <- read.csv(file = "../output/metadata/metadata.csv")
+
+dfclassifications <- read.csv(file = "output/classifications.csv")
+dfmetadata <- read.csv(file = "output/metadata/metadata.csv")
 ```
 
-explore my data
+explore data
 
 ```{r}
+
+head(dfclassifications)
+
+```
+
+```{r}
+
 summary(dfclassifications)
-dim(dfclassifications)
-dim(dfmetadata)
+
+```
+
+```{r}
+
+str(dfclassifications)
+
 ```
 
 Cleaning our data
@@ -67,40 +77,30 @@ Cleaning our data
 ```{r}
 dfclassifications_clean <- dfclassifications %>%
   clean_names() %>%
-  # parameters/fields.csv carries a byte-order mark, and it rides along into the
-  # Species header (the column is literally named "<BOM>Species"). Depending on
-  # how R decodes the file that comes back as species / i_species /
-  # x_u_feff_species, so normalise whatever it became back to `species` -- if
-  # this is wrong, the SKIPPED filter below silently stops matching.
   rename_with(~ "species", ends_with("species")) %>%
-  # The classifier writes "SKIPPED" in every field when you hit Esc / Skip.
-  filter(species != "SKIPPED") %>%
   filter(species != "") %>%
-  # If a crop was labelled out of the buffered folder it carries a _buf100
-  # style suffix that the metadata doesn't have -- drop it so the two match.
+  # If a crop was labelled out of the buffered folder it carries a _buf100 suffix that the metadata doesn't have. drop it so the two match.
   mutate(crop_path = str_replace(image, "_buf\\d+(\\.[^.]+)$", "\\1")) %>%
   mutate(crop_path = str_replace(crop_path, "^\\./", ""))
 
 dfmetadata_clean <- dfmetadata %>%
   clean_names() %>%
-  # cropped_image looks like "../../output/cropped/SANTA FE 983/.../RCNX0013_crop1.JPG".
-  # Cutting everything up to output/cropped/ leaves the same relative path that
-  # image_classification.py writes into the Image column.
+
+  # get column name formats to match
   mutate(crop_path = str_remove(cropped_image, "^.*output/cropped/")) %>%
-  # Crop file NAMES repeat across cameras (RCNX0079_crop1.JPG shows up 4 times),
-  # so we join on this full relative path and never on the bare filename.
   mutate(
-    first_seg = str_replace(subfolder, "[/\\\\].*$", ""), # everything before the first / or \
+    first_seg = str_replace(subfolder, "[/\\\\].*$", ""), 
     cam_id    = str_extract(first_seg, "\\d{3,}"),
     camera_trap_name = if_else(is.na(cam_id), "000", cam_id)
   ) %>%
-  # Same EXIF parse as metadata_analysis.Rmd: "YYYY:MM:DD HH:MM:SS"
+  
   mutate(
     dt   = parse_date_time(date_time_original, orders = "Y:m:d H:M:S"),
     date = as_date(dt),
     hour = hour(dt)
   ) %>%
-  # Santa Fe sits on the equator, so daylight is roughly 06:00-18:00 all year.
+
+  # Santa Fe sits on the equator, so daylight is roughly 06:00-18:00 year round
   mutate(time_of_day = case_when(
     hour >= 6  & hour < 11 ~ "Morning",
     hour >= 11 & hour < 15 ~ "Midday",
@@ -109,12 +109,11 @@ dfmetadata_clean <- dfmetadata %>%
   )) %>%
   mutate(time_of_day = factor(time_of_day,
                               levels = c("Morning", "Midday", "Afternoon", "Night"))) %>%
-  # Keeping just what we use. The full file is ~40 columns wide and includes a
-  # MakerNote blob of raw binary per row, which makes printing it unreadable.
+  # select only the columns we need
   select(subfolder, original_image, crop_path, camera_trap_name,
          dt, date, hour, time_of_day, confidence)
 
-head(dfmetadata_clean)
+
 summary(dfmetadata_clean)
 ```
 
@@ -142,14 +141,7 @@ dffocal %>% count(species)
 ## Hypothesis 1: tortoises and iguanas are not in the same image
 
 ```{r}
-# One original photo can produce several crops, so we roll the crops back up to
-# the photo they came from and ask what was in that photo.
-#
-# Note this is built from ALL labelled photos, not just the tortoise/iguana ones.
-# That matters: if we only kept photos containing one of the two, then "neither
-# species present" becomes impossible by construction, and the independence test
-# below would be testing a table with a structurally empty cell. Photos of doves,
-# finches, etc. are what make "neither" a real category.
+
 dfphoto <- dfjoined %>%
   group_by(original_image, camera_trap_name, time_of_day, date) %>%
   summarize(
@@ -184,11 +176,8 @@ dfphoto_focal %>%
 ggsave(filename = "../output/r_analysis/CoOccurrenceBarPlot.png", width = 10, height = 8, dpi = 300)
 ```
 
-The same photo composition as a donut -- one ring, three slices (tortoise only,
-iguana only, both), so how rarely the two share a photo shows up as how thin the
-"Both" slice is.
-
 ```{r}
+
 dfphoto_focal %>%
   count(composition, name = "frequency") %>%
   mutate(percentage = round(frequency / sum(frequency) * 100)) %>%
@@ -218,7 +207,6 @@ chisq.test(cooccur_table)
 ```
 
 ## Hypothesis 2: they use the same camera at different times of day
-
 
 ```{r}
 # The raw hour is more honest than the four bins -- the bins are our invention,
@@ -262,10 +250,7 @@ dffocal %>%
 ggsave(filename = "../output/r_analysis/TimeOfDayByCameraPlot.png", width = 10, height = 8, dpi = 300)
 ```
 
-The same thing as box-and-whisker plots instead of bars. Each point is one
-camera's proportion for that time of day, so the box shows how much that
-time-of-day share varies from camera to camera (there's just the one labelled
-camera right now, so each box is a single point until the rest are labelled).
+T
 
 ```{r}
 dffocal %>%
@@ -285,8 +270,6 @@ dffocal %>%
 ggsave(filename = "../output/r_analysis/TimeOfDayBoxPlot.png", width = 10, height = 8, dpi = 300)
 ```
 
-
-
 ```{r}
 # Is the time-of-day split different between the two species?
 tod_table <- table(species = dffocal$species, time_of_day = dffocal$time_of_day)
@@ -296,18 +279,6 @@ chisq.test(tod_table)
 ```
 
 ## Hypothesis 3: they are in different locations
-
-> **Only one camera shows up here right now.** The detector wrote metadata for
-> five cameras (905, 975, 976, 983, 1001), but `classifications.csv` has only
-> been hand-labelled for **SANTA FE 1001** so far. The inner join keeps a crop
-> only if it was both detected *and* labelled, so the four unlabelled cameras
-> drop out. This is a labelling gap, not a code problem -- the plots below build
-> themselves from whatever cameras are present, so all five appear the moment the
-> rest get labelled.
-
-The species split per camera as a stacked donut. Each camera is one ring; the
-ring is divided by species, so a ring that's all one colour is a camera that only
-saw one of the two.
 
 ```{r}
 dffocal %>%
@@ -331,11 +302,6 @@ dffocal %>%
 ggsave(filename = "../output/r_analysis/SpeciesByCameraDonutPlot.png", width = 10, height = 8, dpi = 300)
 ```
 
-The same information as an alluvial (flow) plot. The left axis is the species
-overall (tortoise vs. iguana), the right axis is the camera, and the width of
-each ribbon is how many detections flowed from that species into that camera --
-so a species that only turns up at one camera is a single fat ribbon.
-
 ```{r}
 dffocal %>%
   count(species, camera_trap_name, name = "frequency") %>%
@@ -351,11 +317,6 @@ dffocal %>%
 
 ggsave(filename = "../output/r_analysis/SpeciesByCameraAlluvialPlot.png", width = 10, height = 8, dpi = 300)
 ```
-
-The same species-to-camera breakdown as a stacked (nested) donut. The inner ring
-is the species overall, and each inner wedge is broken out by camera in the outer
-ring -- so a species seen at only one camera is a single outer wedge, the donut
-version of the alluvial's one fat ribbon.
 
 ```{r}
 dffocal %>%
