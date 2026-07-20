@@ -242,6 +242,7 @@ dffocal %>%
   # pmax keeps the lower whisker from dropping below 0, which a proportion can't be.
   geom_errorbar(aes(ymin = pmax(proportion - se, 0), ymax = proportion + se),
                 position = position_dodge(width = 0.9), width = 0.2) +
+scale_fill_manual(values = c("#9a0101", "#ffcd01")) +
   labs(title = "Tortoise and Iguana Activity Peaks at Different Times of Day",
        x = "Time of day", y = "Proportion of that species' detections",
        fill = "Species") +
@@ -249,7 +250,8 @@ dffocal %>%
   theme(plot.title = element_text(hjust = 0.5)) +
   facet_wrap(~camera_trap_name)
 
-ggsave(filename = "../output/r_analysis/TimeOfDayByCameraPlot.png", width = 10, height = 8, dpi = 300)
+ggsave(filename = "../output/r_analysis/TimeOfDayByCameraPlot.png", width = 19, height = 8, dpi = 300)
+
 ```
 
 T
