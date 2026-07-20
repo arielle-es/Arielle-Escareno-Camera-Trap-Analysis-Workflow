@@ -167,7 +167,7 @@ dfphoto_focal %>% count(composition)
 ```{r}
 dfphoto_focal %>%
   ggplot(aes(x = composition)) +
-  geom_bar(fill = "#991b1e", alpha = 0.8) +
+  geom_bar(fill = "#9a0101", alpha = 0.8) +
   labs(title = "Tortoises and Iguanas Rarely Share a Photo",
        x = "What was in the photo", y = "Number of photos") +
   theme_bw() +
@@ -189,6 +189,7 @@ dfphoto_focal %>%
   xlim(0.5, 2.5) +
   geom_text(aes(label = paste0(percentage, "%")),
             position = position_stack(vjust = 0.5)) +
+scale_fill_manual(values = c("#9a0101", "#ffcd01", "#808080")) +
   labs(title = "Tortoises and Iguanas Rarely Share a Photo",
        fill = "What was in the photo") +
   theme_void() +
@@ -216,6 +217,7 @@ dffocal %>%
   geom_histogram(binwidth = 1, position = "identity", alpha = 0.5) +
   labs(title = "Hourly Detection Pattern by Species",
        x = "Hour of day", y = "Number of detections", fill = "Species") +
+scale_fill_manual(values = c("#9a0101", "#ffcd01")) +
   theme_bw() +
   theme(plot.title = element_text(hjust = 0.5))
 
