@@ -103,6 +103,12 @@ I used R to read in my finished 'classifications.csv' file and calculate the pat
 - A chart comparing each species' activity levels across different times of day
 - A heatmap showing which species was detected more often at each camera site during each time of day
 - 
+## Discussion
+- Tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of classified images
+- This suggests direct co-occurrence was uncommon, even though both species occupied the same general habitat
+- Both species were detected at several of the same camera trap locations, indicating partial overlap rather than complete separation of habitat use. However, species did favor different camera trap sites overall, leading me to reject my "Overlap hypothesis"
+- Although tortoises and iguanas were rarely photographed together, they were active during similar times of day; this appears to be because they were present at different camera trap sites during differing time periods
+- This suggests the two species are not avoiding each other by being active at different times overall, so my "Avoidance hypothesis" is not fully supported either, the data instead suggests avoidance is happening at the site level
 
 ## Results Summary
 Out of the images I classified, tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of images. Both species were active during similar times of day, with detections peaking around midday for each, yet they tended to favor different camera trap sites overall. Together, these results suggest the two species may coexist by avoiding direct contact at a spatial scale, rather than by separating according to time of day. For my full research poster and discussion of these findings, [see here](https://postimg.cc/fkHGkFGB).
