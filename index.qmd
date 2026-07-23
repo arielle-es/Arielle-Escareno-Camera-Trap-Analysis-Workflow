@@ -24,6 +24,12 @@ lan: en
 ## Project Overview
 This project investigates whether Galápagos tortoises and iguanas share overlapping habitat on Santa Fé Island, or actively avoid direct competition with one another. Using five Reconyx Hyperfire 2 camera traps placed across the island from July 2023 to May 2025, I classified hundreds of camera trap images to examine when and where each species was detected. Raw images were processed using an automated detection model (MegaDetector) to identify which images contained animals, and were then manually classified using a custom Python-based tool built by my mentor, Charles Lehnen. My findings suggest that while tortoises and iguanas were rarely photographed together and tended to favor different camera trap sites, both species were active during similar times of day, pointing to spatial rather than temporal avoidance between the two species. This site walks through the full technical process behind my analysis, from setting up the environment to building the final figures.
 
+## Background: Santa Fé Island
+
+Santa Fé Island is a small, remote island in the Galápagos Archipelago of Ecuador. It is home to the endemic Galápagos land iguana, but its native tortoise species went extinct in the mid-1800s, largely due to hunting by sailors and whalers passing through the islands at the time.
+
+Because of their extinction, a different but closely related species was introduced starting in 2015 to restore the island's lost ecological balance. Since then, both species have coexisted on the island.
+
 ## Tools Used
 - Positron (IDE)
 - Python 3.11
@@ -73,10 +79,12 @@ python3 code/capture_images.py
 
 ## Step 3: Manual Classification
 A GUI (Graphical User Interface) is a visual way to interact with a program. Instead of writing code, you click or tap buttons. The image classification tool I used was built by Charles Lehnen: [view his repository here](https://github.com/CharlesLehnen/camera_trap_analysis).
-![Image Classification GUI](Imagesss/image_class.png)
+
+![Image Classification GUI](Imagesss/image_class.png){width=50% fig-align="center"}
+
 The fields I classified for each image were: Species, Behavior, Shade, Plant, Part, Location, and Iguana_and_tortoise_present (True/False). 
 
-![My classifications viewed as a text file](Imagesss/classificationss.png)
+![My classifications viewed as a text file](Imagesss/classificationss.png){width=50% fig-align="center"}
 
 The GUI lets you classify using either keyboard shortcuts (faster, once you know the categories) or dropdown/radio buttons (slower, but more visual).
 
