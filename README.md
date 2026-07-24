@@ -1,4 +1,4 @@
-![](images/paste-1.png){fig-align="center"}
+![](images/paste-1.png)
 
 # Arielle Escareno Camera Trap Analysis Workflow
 
