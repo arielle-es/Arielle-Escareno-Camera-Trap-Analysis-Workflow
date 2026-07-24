@@ -5,7 +5,7 @@ format:
   html:
     self-contained: true
     toc: true
-    theme: sandstone
+    theme: cyborg
   pdf: default
 output:
   rmarkdown::html_document:
@@ -24,11 +24,15 @@ lan: en
 ## Project Overview
 This project investigates whether Galápagos tortoises and iguanas share overlapping habitat on Santa Fé Island, or actively avoid direct competition with one another. Using five Reconyx Hyperfire 2 camera traps placed across the island from July 2023 to May 2025, I classified hundreds of camera trap images to examine when and where each species was detected. Raw images were processed using an automated detection model (MegaDetector) to identify which images contained animals, and were then manually classified using a custom Python-based tool built by my mentor, Charles Lehnen. My findings suggest that while tortoises and iguanas were rarely photographed together and tended to favor different camera trap sites, both species were active during similar times of day, pointing to spatial rather than temporal avoidance between the two species. This site walks through the full technical process behind my analysis, from setting up the environment to building the final figures.
 
-## Background: Santa Fé Island
+## Background
 
-Santa Fé Island is a small, remote island in the Galápagos Archipelago of Ecuador. It is home to the endemic Galápagos land iguana, but its native tortoise species went extinct in the mid-1800s, largely due to hunting by sailors and whalers passing through the islands at the time.
+Santa Fé Island is a small, remote island in the Galápagos Archipelago of Ecuador.
 
-Because of their extinction, a different but closely related species was introduced starting in 2015 to restore the island's lost ecological balance. Since then, both species have coexisted on the island.
+- The Galápagos Islands are home to the endemic Galápagos iguana and Galápagos tortoise.
+- The Santa Fé tortoise species went extinct in the mid-1800s, largely due to hunting by sailors and whalers passing through the islands at the time. Because no genetic sample of the original species survived, a closely related tortoise species was introduced to the island starting in 2015 to help restore its ecological balance.
+- The Galápagos land iguana, meanwhile, remained on the island throughout this time and was never displaced.
+- Because these species share the same environment, there may be spatial overlap or active avoidance between them.
+
 
 ## Tools Used
 - Positron (IDE)
@@ -79,12 +83,10 @@ python3 code/capture_images.py
 
 ## Step 3: Manual Classification
 A GUI (Graphical User Interface) is a visual way to interact with a program. Instead of writing code, you click or tap buttons. The image classification tool I used was built by Charles Lehnen: [view his repository here](https://github.com/CharlesLehnen/camera_trap_analysis).
-
-![Image Classification GUI](Imagesss/image_class.png){width=50% fig-align="center"}
-
+![Image Classification GUI](Imagesss/image_class.png)
 The fields I classified for each image were: Species, Behavior, Shade, Plant, Part, Location, and Iguana_and_tortoise_present (True/False). 
 
-![My classifications viewed as a text file](Imagesss/classificationss.png){width=50% fig-align="center"}
+![My classifications viewed as a text file](Imagesss/classificationss.png)
 
 The GUI lets you classify using either keyboard shortcuts (faster, once you know the categories) or dropdown/radio buttons (slower, but more visual).
 
@@ -103,15 +105,112 @@ I used R to read in my finished 'classifications.csv' file and calculate the pat
 - A chart comparing each species' activity levels across different times of day
 - A heatmap showing which species was detected more often at each camera site during each time of day
 - 
-## Discussion
-- Tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of classified images
-- This suggests direct co-occurrence was uncommon, even though both species occupied the same general habitat
-- Both species were detected at several of the same camera trap locations, indicating partial overlap rather than complete separation of habitat use. However, species did favor different camera trap sites overall, leading me to reject my "Overlap hypothesis"
-- Although tortoises and iguanas were rarely photographed together, they were active during similar times of day; this appears to be because they were present at different camera trap sites during differing time periods
-- This suggests the two species are not avoiding each other by being active at different times overall, so my "Avoidance hypothesis" is not fully supported either, the data instead suggests avoidance is happening at the site level
+
+## Building the Figures: species_interactions.qmd
+
+All of my data analysis and figure building was done in a separate Quarto file called 'species_interactions.qmd', using R. This file reads in my finished 'classifications.csv', processes it, and generates each of the plots used in my results.
+
+Here are the figures built, along with the code used to generate each one:
+
+### Co-occurrence Bar Chart
+
+```r
+dfphoto_focal %>%
+  ggplot(aes(x = composition)) +
+  geom_bar(fill = "#9a0101", alpha = 0.8) +
+  labs(title = "Tortoises and Iguanas Rarely Share a Photo",
+       x = "What was in the photo", y = "Number of photos") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/CoOccurrenceBarPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+![Bar chart showing how rarely tortoises and iguanas were photographed together](Imagesss/tortoises_iguanas_rare.png){width=30% fig-align="center"}
+
+### Species by Camera Trap (Alluvial Chart)
+
+```r
+dffocal_loc %>%
+  count(species, camera_trap_name, name = "frequency") %>%
+  ggplot(aes(y = frequency, axis1 = species, axis2 = camera_trap_name)) +
+  geom_alluvium(aes(fill = species), width = 1/6) +
+  geom_stratum(alpha = 0.5, width = 1/6) +
+  geom_text(stat = "stratum", size = 3, aes(label = after_stat(stratum))) +
+  scale_fill_manual(values = c(
+    "#9c0100",
+    "#ffcd01"
+  )) +
+  scale_x_discrete(limits = c("Species", "Camera trap"), expand = c(0.1, 0.1)) +
+  labs(title = "Which Camera Trap Each Species Was Detected",
+       y = "Number of detections", fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/SpeciesByCameraAlluvialPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+![Chart comparing where each species was detected across camera sites](Imagesss/which_camera_trap.png){width=30% fig-align="center"}
+
+### Activity by Time of Day, by Camera
+
+```r
+dffocal_loc %>%
+  count(camera_trap_name, time_of_day, species) %>%
+  group_by(camera_trap_name, species) %>%
+  mutate(
+    total      = sum(n),
+    proportion = n / total,
+    se         = sqrt(proportion * (1 - proportion) / total)
+  ) %>%
+  ungroup() %>%
+  ggplot(aes(x = time_of_day, y = proportion, fill = species)) +
+  geom_col(position = position_dodge(width = 0.9)) +
+  geom_errorbar(aes(ymin = pmax(proportion - se, 0), ymax = proportion + se),
+                position = position_dodge(width = 0.9), width = 0.2) +
+  scale_fill_manual(values = c("#9a0101", "#ffcd01")) +
+  labs(title = "Tortoise and Iguana Activity Peaks at Different Times of Day",
+       x = "Time of day", y = "Proportion of that species' detections",
+       fill = "Species") +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~camera_trap_name)
+
+ggsave(filename = "../output/r_analysis/TimeOfDayByCameraPlot.png", width = 19, height = 8, dpi = 300)
+```
+
+![Chart comparing each species' activity levels across different times of day, broken down by camera trap site](Imagesss/peak_activity_times.png){width=30% fig-align="center"}
+
+### Hourly Detection Pattern
+
+```r
+dffocal %>%
+  ggplot(aes(x = hour, fill = species)) +
+  geom_histogram(binwidth = 1, position = "identity", alpha = 0.5) +
+  labs(title = "Hourly Detection Pattern by Species",
+       x = "Hour of day", y = "Number of detections", fill = "Species") +
+  scale_fill_manual(values = c("#9a0101", "#ffcd01")) +
+  theme_bw() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+ggsave(filename = "../output/r_analysis/HourlyActivityPlot.png", width = 10, height = 8, dpi = 300)
+```
+
+![Chart showing the raw hourly detection pattern for each species across the day](Imagesss/hourly_detection_by_species.png){width=30% fig-align="center"}
+
+
 
 ## Results Summary
 Out of the images I classified, tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of images. Both species were active during similar times of day, with detections peaking around midday for each, yet they tended to favor different camera trap sites overall. Together, these results suggest the two species may coexist by avoiding direct contact at a spatial scale, rather than by separating according to time of day. For my full research poster and discussion of these findings, [see here](https://postimg.cc/fkHGkFGB).
+
+## Discussion
+
+Tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of classified images.
+
+- This suggests direct co-occurrence was uncommon even though both species occupied the same general habitat.
+- Both species were detected at several of the same camera trap locations (like 976 and 983), indicating a partial overlap rather than a complete separation of habitat use. However, species did favor different camera trap sites. This outcome indicates I should reject my "Overlap hypothesis" because species displayed spatial overlap with interspecies avoidance.
+- Although tortoises and iguanas were rarely photographed together, they were active during similar times of the day. Following our analysis this is because they were present at different camera trap sites during differing time periods.
+- This suggests the two species are not avoiding each other by being active in the habitat overall at different times, so my "Avoidance hypothesis" is not supported. However, the data suggests they are avoiding one another at the site level.
 
 ## Reflections
 Overall, having the opportunity to work one on one with someone who's an expert in this field has been an amazing experience. Although I'm not necessarily interested in biological sciences, I am interested in computer science, so this project gave me hands-on skills I can directly apply to future computer science work. 
