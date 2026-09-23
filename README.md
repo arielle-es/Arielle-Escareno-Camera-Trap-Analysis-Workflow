@@ -40,6 +40,6 @@ Arielle Escareno
 
 Refer to the `LICENSE` file for the full licensing agreement of the project.
 
-## Aknowledgements
+## Acknowledgements
 
-Charles Lehnen my Young Researchers Program (YRP) mentor
+Charles Lehnen, my Young Researchers Program (YRP) mentor!
