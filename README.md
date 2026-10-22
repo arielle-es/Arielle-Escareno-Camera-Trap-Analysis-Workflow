@@ -1,5 +1,5 @@
 # Arielle's Camera Trap Analysis Workflow Website
-![QR Code](Arielle-Escareno-Camera-Trap-Analysis-Workflow/images/paste-1.png)
+![QR Code](images/paste-1.png)
 
 **By Arielle**
 
