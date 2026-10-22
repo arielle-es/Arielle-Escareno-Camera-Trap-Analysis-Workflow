@@ -1,6 +1,6 @@
-! (/Users/arielleescareno/Documents/Github/Arielle-Escareno-Camera-Trap-Analysis-Workflow/images/paste-1.png)
+# Arielle's Camera Trap Analysis Workflow Website
+! [QR Code](/Users/arielleescareno/Documents/Github/Arielle-Escareno-Camera-Trap-Analysis-Workflow/images/paste-1.png)
 
-# Arielle Escareno's Camera Trap Analysis Workflow
 **By Arielle**
 
 
