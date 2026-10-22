@@ -247,7 +247,7 @@ dfmetadata_clean <- dfmetadata %>%
 summary(dfmetadata_clean)
 ```
 
-### Joining my data with the metadaa
+### Joining my data with the metadata
 
 ```{r}
 # inner_join because a crop is only useful here if we both detected AND labelled it.
