@@ -7,10 +7,6 @@ format:
     toc: true
     theme: cyborg
   pdf: default
-output:
-  rmarkdown::html_document:
-    theme: sandstone
-  pagedown::pdf_document: default
 editor: visual
 author:
   - "Arielle Escareno"
@@ -351,7 +347,7 @@ ggsave(filename = "../output/r_analysis/HourlyActivityPlot.png", width = 10, hei
 
 ## Results Summary
 
-Out of the images I classified, tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of images. Both species were active during similar times of day, with detections peaking around midday for each, yet they tended to favor different camera trap sites overall. Together, these results suggest the two species may coexist by avoiding direct contact at a spatial scale, rather than by separating according to time of day. For my full research poster and discussion of these findings, [see here](https://postimg.cc/fkHGkFGB).
+Out of the images I classified, tortoises and iguanas were rarely photographed together, appearing in the same frame in less than 1% of images. Both species were active during similar times of day, with detections peaking around midday for each, yet they tended to favor different camera trap sites overall. Together, these results suggest the two species may coexist by avoiding direct contact at a spatial scale, rather than by separating according to time of day. See my research poster below!
 
 ![](images/paste-3.png){fig-align="center" width="868"}
 
